@@ -105,7 +105,7 @@ class packetize(gr.basic_block):
 
         if src & 0x80000000 == 0 and len(payload) > cmd_start:
             cmd_len = payload[cmd_start]
-            if cmd_len == 0x33 and len(payload) >= cmd_start + 1 + cmd_len:
+            if cmd_len in (0x33, 0xab) and len(payload) >= cmd_start + 1 + cmd_len - 2:
                 cmd_payload = payload[cmd_start + 1:cmd_start + 1 + cmd_len]
                 cmd = cmd_payload[1]
                 if cmd == 0xce:  # hourly usage data, every 6 hours
@@ -121,6 +121,16 @@ class packetize(gr.basic_block):
                     hourly_readings = [reading / 100 for reading in struct.unpack(">" + "H"*n_hours, cmd_payload[10:10 + 2*n_hours])]
                     readings_str = ", ".join(f"{reading:.2f}" for reading in hourly_readings)
                     print(f"  Hourly readings: {readings_str}")
+
+                    print()
+
+                elif cmd == 0x23:  # usage message
+                    print()
+
+                    main_reading = struct.unpack("<i", cmd_payload[15:19])[0]/1000
+                    YY, MM, DD, hh, mm, ss = struct.unpack("BBBBBB", cmd_payload[8:14])
+                    ts_theirs = datetime.datetime(2000+YY, MM, DD, hh, mm, ss)
+                    print(f"  Reading for meter number {src} @ {ts_theirs.isoformat()} = {main_reading} kWh")
 
                     print()
 
