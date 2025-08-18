@@ -19,11 +19,22 @@
 # Boston, MA 02110-1301, USA.
 #
 
+# to publish meter readings via MQTT (to homeassistant for example),
+# set an environment variable like this:
+# ELSTER_MQTT_BROKER="192.168.1.1:1883"
+# if the broker needs authentication, provide it with an
+# environment variable like this:
+# ELSTER_MQTT_BROKER_LOGIN="user_name/password"
+# then json meter reading messages will be published the the topic
+# elster/${meter_number}
+# formatted like: {"kWh": 451147.14, "timestamp": 1755614264.336097}
+
 import datetime
-import os.path
+import os
 import struct
 import time
 import numpy
+import json
 from gnuradio import gr
 
 
@@ -53,6 +64,8 @@ class packetize(gr.basic_block):
         self.packet_type = [0] * num_inputs
         self.bits_remaining = [0] * num_inputs
 
+        self.mqtt_publish("elster/new_client", json.dumps({"pcap_file": filename, "timestamp": time.time()}))
+
     def __del__(self):
         self.file.close()
 
@@ -71,6 +84,25 @@ class packetize(gr.basic_block):
                     reg ^= poly
         reg ^= 0xffff
         return bytes([reg & 0xff, reg >> 8])
+
+    def mqtt_publish(self, topic, payload, retain=True):
+        try:
+            if 'ELSTER_MQTT_BROKER' in os.environ:
+                import paho.mqtt.publish as publish
+                if ":" in os.environ['ELSTER_MQTT_BROKER']:
+                    mqtt_host, mqtt_port_env = os.environ['ELSTER_MQTT_BROKER'].split(":", 1)
+                    mqtt_port = int(mqtt_port_env)
+                else:
+                    mqtt_host = os.environ['ELSTER_MQTT_BROKER']
+                    mqtt_port = 1883
+                if 'ELSTER_MQTT_BROKER_LOGIN' in os.environ:
+                    mqtt_user, mqtt_pass = os.environ['ELSTER_MQTT_BROKER_LOGIN'].split("/", 1)
+                    auth = {"username": mqtt_user, "password": mqtt_pass}
+                else:
+                    auth = None
+                publish.single(topic=topic, payload=payload, retain=retain, hostname=mqtt_host, port=mqtt_port, auth=auth)
+        except Exception as e:
+            print(f"MQTT publish failed: {e}")
 
     def process_packet(self, channel, pkt):
         if pkt[0] >= 2:
@@ -131,6 +163,7 @@ class packetize(gr.basic_block):
                         YY, MM, DD, hh, mm, ss = struct.unpack("BBBBBB", cmd_payload[8:14])
                         ts_theirs = datetime.datetime(2000+YY, MM, DD, hh, mm, ss)
                         print(f"  Reading for meter number {src} @ {ts_theirs.isoformat()} = {main_reading} kWh")
+                        self.mqtt_publish(f"elster/{src}", json.dumps({"kWh": main_reading, "timestamp": ts_theirs.isoformat()}))
 
                         print()
 
