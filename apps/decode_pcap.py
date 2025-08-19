@@ -69,14 +69,33 @@ def decode_date(date_bytes):
 
 
 def print_pkt(timestamp, pkt):
-    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp)), end=" ")
-    len1, flag1, src, dst, unk1, unk2, unk3 = struct.unpack(">BBIIBBB", pkt[0:13])
-    print(f"len={len1:02x} flag={flag1:02x} {src=:08x} {dst=:08x} {unk1:02x}{unk2:02x}{unk3:02x}", end=" ")
-    if (src & 0x80000000) or (dst == 0 and len1 >= 35):
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp)), end="  ")
+    if pkt[0] >= 2:
+        len_bytes = 1
+        len1 = pkt[0]
+        cmd_start = 15
+    else:
+        len_bytes = 2
+        len1 = (pkt[0] << 8) | pkt[1]
+        cmd_start = 20
+    payload = pkt[len_bytes:-2]
+    flag1, src, dst = struct.unpack(">BII", payload[0:9])
+    print(f"len={pkt[0:len_bytes].hex().ljust(4)} flag={flag1:02x} src={src:08x} dst={dst:08x} {payload[9:12].hex()} {payload[12:15].hex()}", end=" ")
+    pkt = pkt[-1 + len_bytes::]
+
+    if (0x10 & flag1):
         ts_h, ts_m, ts_s = decode_ts(pkt[13:16])
         print(f"ts={ts_h:02}:{ts_m:02}:{ts_s:06.3f}", end=" ")
     else:
         print("rpt=" + pkt[13:14].hex() + " " + pkt[14:16].hex(), end=" ")
+
+    if src & 0x80000000 == 0:
+        try:
+            cmd_len = payload[cmd_start]
+            cmd = bytes((payload[cmd_start+2],))
+            print(f"cmd_len={cmd_len} cmd={cmd.hex()}", end=" ")
+        except Exception as e:
+            pass
 
     if dst == 0 and len1 >= 35:  # flood broadcast message
         unk4, unk5, hop, unk7, addr, unk8, len2 = struct.unpack(">BBBBIIB", pkt[16:29])
@@ -180,6 +199,39 @@ def print_pkt(timestamp, pkt):
             else:
                 print()
 
+    if src & 0x80000000 == 0 and len(payload) > cmd_start:
+        cmd_len = payload[cmd_start]
+        if cmd_len in (15, 171) and len(payload) >= cmd_start + 1 + cmd_len - 2:
+            cmd_payload = payload[cmd_start + 1:cmd_start + 1 + cmd_len]
+            cmd = cmd_payload[1]
+            if cmd == 0xce:  # hourly usage data, every 6 hours
+                print()
+
+                main_reading = cmd_payload[44:47].hex()
+                print(f"  Meter reading for meter #{src}: {main_reading} kWh")
+
+                n_hours = cmd_payload[9]
+                if n_hours > 17:
+                    print(f"  Number of hourly readings is too high: {n_hours}")
+                    n_hours = 17
+                hourly_readings = [reading / 100 for reading in struct.unpack(">" + "H"*n_hours, cmd_payload[10:10 + 2*n_hours])]
+                readings_str = ", ".join(f"{reading:.2f}" for reading in hourly_readings)
+                print(f"  Hourly readings: {readings_str}")
+
+                print()
+
+            elif cmd == 0x23:  # usage message
+                if main_reading := struct.unpack("<i", cmd_payload[15:19])[0]/1000:
+                    print()
+
+                    YY, MM, DD, hh, mm, ss = struct.unpack("BBBBBB", cmd_payload[8:14])
+                    ts_theirs = datetime.datetime(2000+YY, MM, DD, hh, mm, ss)
+                    print(f"  Reading for meter number {src} @ {ts_theirs.isoformat()} = {main_reading} kWh")
+
+                    print()
+
+# for testing
+#sys.argv= ["junk", "/tmp/elster-042.pcap"]
 
 if len(sys.argv) < 2:
     sys.stderr.write("Usage: decode_pcap.py input_file...\n")
