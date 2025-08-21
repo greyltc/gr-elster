@@ -68,6 +68,18 @@ blocks:
     coordinate: [8, 292.0]
     rotation: 0
     state: enabled
+- name: dev_args
+  id: variable
+  parameters:
+    comment: ''
+    value: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [184, 16.0]
+    rotation: 0
+    state: enabled
 - name: n_channels
   id: variable
   parameters:
@@ -536,6 +548,7 @@ blocks:
     ant8: ''
     ant9: ''
     args: ''
+    args: dev_args
     bb_gain0: '24'
     bb_gain1: '20'
     bb_gain10: '20'
