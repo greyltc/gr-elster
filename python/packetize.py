@@ -125,14 +125,14 @@ class packetize(gr.basic_block):
                     print()
 
                 elif cmd == 0x23:  # usage message
-                    print()
+                    if main_reading := struct.unpack("<i", cmd_payload[15:19])[0]/1000:
+                        print()
 
-                    main_reading = struct.unpack("<i", cmd_payload[15:19])[0]/1000
-                    YY, MM, DD, hh, mm, ss = struct.unpack("BBBBBB", cmd_payload[8:14])
-                    ts_theirs = datetime.datetime(2000+YY, MM, DD, hh, mm, ss)
-                    print(f"  Reading for meter number {src} @ {ts_theirs.isoformat()} = {main_reading} kWh")
+                        YY, MM, DD, hh, mm, ss = struct.unpack("BBBBBB", cmd_payload[8:14])
+                        ts_theirs = datetime.datetime(2000+YY, MM, DD, hh, mm, ss)
+                        print(f"  Reading for meter number {src} @ {ts_theirs.isoformat()} = {main_reading} kWh")
 
-                    print()
+                        print()
 
     def forecast(self, noutput_items, ninputs):
         return [640] * ninputs

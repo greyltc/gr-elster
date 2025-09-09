@@ -1,3 +1,4 @@
 /build/
 /apps/elster*.py
 *.pcap
+*.pdf
